@@ -2,62 +2,54 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"net/http"
 	"regexp"
-	"time"
+
+	"github.com/Danielecarn/crud-api-echo/models"
+	"github.com/Danielecarn/crud-api-echo/resources"
 
 	"github.com/labstack/echo/v4"
 )
 
-type User struct {
-	Id         int    `json:"id"`
-	Username   string `json:"username"`
-	FirstName  string `json:"firstname"`
-	LastName   string `json:"lastname"`
-	Email      string `json:"email"`
-	Password   string `json:"password"`
-	Phone      string `json:"phone"`
-	UserStatus int    `json:"userstatus"`
-}
-
-type Users []User
-
-var users = Users{
-	User{generateID(), "superman", "dani", "carnauba", "dani@dani.com", "secret", "88997773137", 0},
-	User{generateID(), "mulhergato", "dani", "carnauba", "dani@dani.com", "secret", "88997773137", 0},
-}
-
-func generateID() int {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return r.Intn(10000)
-}
+var users models.Users
 
 func getUsers(c echo.Context) error {
 	return c.JSON(http.StatusOK, users)
 }
 
 func postUser(c echo.Context) error {
-	user := User{}
+	user := models.User{}
 
 	err := c.Bind(&user)
 	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
+	if !models.Validacao(user) {
 		return c.JSON(400, "request não possui body")
 	}
 
-	user.Id = generateID()
-	users = append(users, user)
+	user.Id = resources.GenerateID()
+	users = resources.AddUser(users, user)
 	return c.JSON(201, "usuário criado")
 
 }
 
 func postUserArray(c echo.Context) error {
-	arrayUsers := []User{}
+	arrayUsers := []models.User{}
 	if err := c.Bind(&arrayUsers); err != nil {
-		return c.JSON(400, err)
+		return c.JSON(http.StatusBadRequest, err)
 	}
+	if len(arrayUsers) == 0 {
+		return c.JSON(400, "request não possui body")
+	}
+
 	for _, user := range arrayUsers {
-		users = append(users, user)
+
+		if !models.Validacao(user) {
+			return c.JSON(400, "user inválido")
+		}
+		users = resources.AddUser(users, user)
 	}
 	return c.JSON(201, "Todos os usuários criados")
 
@@ -65,11 +57,12 @@ func postUserArray(c echo.Context) error {
 
 func getUser(c echo.Context) error {
 	username := c.Param("username")
-	matched, _ := regexp.MatchString(`\W.*`, username)
 
+	matched, _ := regexp.MatchString(`\W.*`, username)
 	if matched {
 		return c.JSON(400, "username inválido")
 	}
+
 	for _, user := range users {
 		if user.Username == username {
 			return c.JSON(200, user)
@@ -86,23 +79,17 @@ func putUser(c echo.Context) error {
 		return c.JSON(400, "username inválido")
 	}
 
-	updateUser := User{}
+	updateUser := models.User{}
 	err := c.Bind(&updateUser)
 	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+	if !models.Validacao(updateUser) {
 		return c.JSON(400, "request não possui body")
 	}
-
-	for i, _ := range users {
+	for i := range users {
 		if users[i].Username == username {
-			users[i].Id = updateUser.Id
-			users[i].Username = updateUser.Username
-			users[i].FirstName = updateUser.FirstName
-			users[i].LastName = updateUser.LastName
-			users[i].Email = updateUser.Email
-			users[i].Password = updateUser.Password
-			users[i].Phone = updateUser.Phone
-			users[i].UserStatus = updateUser.UserStatus
-
+			resources.ChangeUser(&users[i], updateUser)
 			return c.JSON(200, "usuário atualizado")
 		}
 	}
@@ -116,9 +103,10 @@ func deleteUser(c echo.Context) error {
 	if matched {
 		return c.JSON(400, "username inválido")
 	}
-	for i, _ := range users {
+	for i := range users {
 		if users[i].Username == username {
 			users = append(users[:i], users[i+1:]...)
+
 			return c.JSON(200, "usuário apagado")
 		}
 	}
